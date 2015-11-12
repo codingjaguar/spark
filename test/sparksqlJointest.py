@@ -37,8 +37,16 @@ schemaTable2.registerTempTable("table2")
 data = sqlContext.sql("SELECT table1.first_name from table1 JOIN table2 on table1.cityId = table2.cityId where table1.id < 2000")
 
 # cache the result
-data.cache()
+# data.cache()
 # print the result
 name = data.map(lambda p: "FName: " + p.first_name)
 for theName in name.collect():
     print(theName)
+
+
+data2 = sqlContext.sql("SELECT table1.first_name from table1 JOIN table2 on table1.cityId = table2.cityId where table1.id < 2000")
+data2.collect()
+data2.collect()
+data2.collect()
+data3 = sqlContext.sql("SELECT table1.first_name from table1 JOIN table2 on table1.cityId = table2.cityId where table1.id < 1000")
+data3.collect()
