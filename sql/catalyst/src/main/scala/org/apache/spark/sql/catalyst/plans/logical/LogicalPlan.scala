@@ -127,9 +127,38 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with Logging {
       cleanLeft.children.size == cleanRight.children.size && {
       logDebug(
         s"[${cleanRight.cleanArgs.mkString(", ")}] == [${cleanLeft.cleanArgs.mkString(", ")}]")
+      println(s"compare [${cleanRight.cleanArgs.mkString(", ")}] with [${cleanLeft.cleanArgs.mkString(", ")}]")
       cleanRight.cleanArgs == cleanLeft.cleanArgs
     } &&
     (cleanLeft.children, cleanRight.children).zipped.forall(_ sameResult _)
+  }
+
+  /**
+   * Returns true and a filter node when the given logical plan will return the same results as
+   * this logical plan by applying this filter.
+   *
+   * Since its likely undecidable to generally determine if two given plans will produce the same
+   * results, it is okay for this function to return false, even if the results are actually
+   * the same.  Such behavior will not affect correctness, only the application of performance
+   * enhancements like caching.  However, it is not acceptable to return true if the results could
+   * possibly be different.
+   *
+   * By default this function performs a modified version of equality that is tolerant of cosmetic
+   * differences like attribute naming and or expression id differences.  Logical operators that
+   * can do better should override this function.
+   */
+  def sameResultIfApplyingFilter(plan: LogicalPlan): (Boolean, Option[]) = {
+    val cleanLeft = EliminateSubQueries(this)
+    val cleanRight = EliminateSubQueries(plan)
+
+    cleanLeft.getClass == cleanRight.getClass &&
+      cleanLeft.children.size == cleanRight.children.size && {
+      logDebug(
+        s"[${cleanRight.cleanArgs.mkString(", ")}] == [${cleanLeft.cleanArgs.mkString(", ")}]")
+      println(s"compare [${cleanRight.cleanArgs.mkString(", ")}] with [${cleanLeft.cleanArgs.mkString(", ")}]")
+      cleanRight.cleanArgs == cleanLeft.cleanArgs
+    } &&
+      (cleanLeft.children, cleanRight.children).zipped.forall(_ sameResult _)
   }
 
   /** Args that have cleaned such that differences in expression id should not affect equality */

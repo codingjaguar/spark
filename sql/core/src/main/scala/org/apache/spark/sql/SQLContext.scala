@@ -916,7 +916,14 @@ class SQLContext(@transient val sparkContext: SparkContext)
     lazy val analyzed: LogicalPlan = analyzer.execute(logical)
     lazy val withCachedData: LogicalPlan = {
       assertAnalyzed()
+
+      // debug: print logical plan
+
+      println("Logical Plan")
+      println(analyzed.treeString)
+
       cacheManager.useCachedData(analyzed)
+
     }
     lazy val optimizedPlan: LogicalPlan = optimizer.execute(withCachedData)
 
