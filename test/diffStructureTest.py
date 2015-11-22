@@ -33,18 +33,21 @@ table2 = parts2.map(lambda p : Row(cityId = int(p[0]), city = p[1]))
 schemaTable2 = sqlContext.createDataFrame(table2)
 schemaTable2.registerTempTable("table2")
 
+# test for switch condition
 # run the sql
-data = sqlContext.sql("SELECT table1.first_name from table1 JOIN table2 on table1.cityId = table2.cityId where table1.id < 2000")
-
+data1 = sqlContext.sql("SELECT table1.first_name from table1 JOIN table2 on table1.cityId = table2.cityId where table1.id < 2000 AND table1.id > 1000")
 # cache the result
-data.cache()
+data1.cache()
 # print the result
-name = data.map(lambda p: "FName: " + p.first_name)
-for theName in name.collect():
-    print(theName)
-
-
-data2 = sqlContext.sql("SELECT table1.first_name from table1 JOIN table2 on table1.cityId = table2.cityId where table1.id < 2000")
+data1.collect()
+data2 = sqlContext.sql("SELECT table1.first_name from table1 JOIN table2 on table1.cityId = table2.cityId where table1.id > 1000 AND table1.id < 2000")
 data2.collect()
-data3 = sqlContext.sql("SELECT table1.first_name from table1 JOIN table2 on table1.cityId = table2.cityId where table1.id < 1000")
+
+# test for different reference
+data3 = sqlContext.sql("SELECT table1.first_name from table1 JOIN table2 on table1.cityId = table2.cityId where table1.cityId > 5")
+data3.cache()
 data3.collect()
+
+data4 = sqlContext.sql("SELECT table1.first_name from table1 JOIN table2 on table1.cityId = table2.cityId where table2.cityId > 5")
+data4.collect()
+
