@@ -161,6 +161,31 @@ private[sql] class CacheManager(sqlContext: SQLContext) extends Logging {
     // apply filter on cached
   }
 
+
+  private[sql] def getCachedData(subPlan: LogicalPlan): LogicalPlan = {
+    lookupCachedData(subPlan) match {
+      case cd: Some => cd.map(_.cachedRepresentation.withOutput(subPlan.output)).getOrElse(subPlan)
+      case None => {
+        lookupSimilarCachedData(subPlan) match {
+          case (Some(cd), Some(f)) => applyFilterOnCachedData(cd, f)
+          case _ => subPlan
+        }
+      }
+    }
+  }
+
+  //cd.map(_.cachedRepresentation.withOutput(subPlan.output))
+  //.getOrElse(subPlan)        //  find filter
+  //  add filter
+  // transform
+  private[sql] def applyFilterOnCachedData(subPlan: LogicalPlan, cd: CachedData, f: Filter): LogicalPlan = {
+    f.child = cd.cachedRepresentation.withOutput(subPlan.output)).getOrElse(subPlan)
+  }
+
+
+
+
+
   /**
    * Invalidates the cache of any data that contains `plan`. Note that it is possible that this
    * function will over invalidate.

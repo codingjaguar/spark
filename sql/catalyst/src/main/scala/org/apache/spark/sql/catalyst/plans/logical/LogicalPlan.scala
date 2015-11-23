@@ -160,14 +160,14 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with PredicateHelper w
       if (cleanRight.cleanArgs == cleanLeft.cleanArgs) {
         true
       } else {
-        cleanLeft match {
-          case Filter =>
+        // check if cleanLeft has stricter filter than cleanRight
+        (cleanLeft, cleanRight) match {
+          case (Filter(cond1, _), Filter(cond2, _)) => isStricter(cond1, cond2) &&
+            (cleanLeft.children, cleanRight.children).zipped.forall(_ sameResult _)
+          case _ => false
         }
       }
-      // if filter -> compare strictness
-      // else
-    } &&
-      (cleanLeft.children, cleanRight.children).zipped.forall(_ sameResult _)
+    }
   }
 
   def isStricter(left: Expression, right: Expression): Boolean = {
@@ -178,14 +178,11 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with PredicateHelper w
       (leftPredicates, rightPredicates).zipped forall {
         // we assume the attribute reference is on the left
         case (LessThan(a1: AttributeReference, Cast(Literal(v1, t1), _)), LessThan(a2: AttributeReference, Cast(Literal(v2, t2), _))) =>
-          a1.qualifiers == a2.qualifiers && t1 == t2 && v1 == v2
-
+          // FIXME: v1 and v2 may not be comparable
+          a1.qualifiers == a2.qualifiers && t1 == t2 && v1 <= v2
         //case (LessThan(AttributeReference(_, _, _, _)(_, q), l1), LessThan(AttributeReference(_, _, _, _)(_, c), l2)) => true
       }
     }
-
-
-
   }
 
   /**
