@@ -145,8 +145,8 @@ private[sql] class CacheManager(sqlContext: SQLContext) extends Logging {
     * are the same, but we allow the cached table to have different predicates than plan).
     * Returns a similar cached table and a predicate. By applying the predicate on cached table,
     * we get logically the same result as plan. */
-  private[sql] def lookupSimilarCachedData(plan: LogicalPlan): Option[CachedData] = readLock {
-    cachedData.find(cd => plan.similarResult(cd.plan))
+  private[sql] def lookupSimilarCachedData(plan: LogicalPlan): (Option[CachedData], Option[Filter]) = readLock {
+    cachedData.find(cd => plan.sameResultIfApplyingFilter(cd.plan))
   }
 
   /** Replaces segments of the given logical plan with cached versions where possible. */
@@ -157,6 +157,8 @@ private[sql] class CacheManager(sqlContext: SQLContext) extends Logging {
           .map(_.cachedRepresentation.withOutput(currentFragment.output))
           .getOrElse(currentFragment)
     }
+    // use (cached, filter) <- lookupSimilarCachedData
+    // apply filter on cached
   }
 
   /**

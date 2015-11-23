@@ -25,7 +25,7 @@ import org.apache.spark.sql.catalyst.plans.QueryPlan
 import org.apache.spark.sql.catalyst.trees.{CurrentOrigin, TreeNode}
 
 
-abstract class LogicalPlan extends QueryPlan[LogicalPlan] with Logging {
+abstract class LogicalPlan extends QueryPlan[LogicalPlan] with PredicateHelper with Logging {
 
   private var _analyzed: Boolean = false
 
@@ -134,6 +134,61 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with Logging {
   }
 
   /**
+   * Returns true when the given logical plan will return the same results as
+   * this logical plan by applying a filter.
+   *
+   * Since its likely undecidable to generally determine if two given plans will produce the same
+   * results, it is okay for this function to return false, even if the results are actually
+   * the same.  Such behavior will not affect correctness, only the application of performance
+   * enhancements like caching.  However, it is not acceptable to return true if the results could
+   * possibly be different.
+   *
+   * By default this function performs a modified version of equality that is tolerant of cosmetic
+   * differences like attribute naming and or expression id differences.  Logical operators that
+   * can do better should override this function.
+   */
+  def sameResultIfApplyingFilter(plan: LogicalPlan): Boolean = {
+    val cleanLeft = EliminateSubQueries(this)
+    val cleanRight = EliminateSubQueries(plan)
+
+    cleanLeft.getClass == cleanRight.getClass &&
+      cleanLeft.children.size == cleanRight.children.size && {
+      logDebug(
+        s"[${cleanRight.cleanArgs.mkString(", ")}] == [${cleanLeft.cleanArgs.mkString(", ")}]")
+      // debug output
+      println(s"compare [${cleanRight.cleanArgs.mkString(", ")}] with [${cleanLeft.cleanArgs.mkString(", ")}]")
+      if (cleanRight.cleanArgs == cleanLeft.cleanArgs) {
+        true
+      } else {
+        cleanLeft match {
+          case Filter =>
+        }
+      }
+      // if filter -> compare strictness
+      // else
+    } &&
+      (cleanLeft.children, cleanRight.children).zipped.forall(_ sameResult _)
+  }
+
+  def isStricter(left: Expression, right: Expression): Boolean = {
+    val leftPredicates = splitConjunctivePredicates(left)
+    val rightPredicates = splitConjunctivePredicates(right)
+
+    leftPredicates.size == rightPredicates.size && {
+      (leftPredicates, rightPredicates).zipped forall {
+        // we assume the attribute reference is on the left
+        case (LessThan(a1: AttributeReference, Cast(Literal(v1, t1), _)), LessThan(a2: AttributeReference, Cast(Literal(v2, t2), _))) =>
+          a1.qualifiers == a2.qualifiers && t1 == t2 && v1 == v2
+
+        //case (LessThan(AttributeReference(_, _, _, _)(_, q), l1), LessThan(AttributeReference(_, _, _, _)(_, c), l2)) => true
+      }
+    }
+
+
+
+  }
+
+  /**
    * Returns true and a filter node when the given logical plan will return the same results as
    * this logical plan by applying this filter.
    *
@@ -147,7 +202,7 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with Logging {
    * differences like attribute naming and or expression id differences.  Logical operators that
    * can do better should override this function.
    */
-  def sameResultIfApplyingFilter(plan: LogicalPlan): (Boolean, Option[]) = {
+  def findFilterToMakeSameResult(plan: LogicalPlan): Option[Filter] = {
     val cleanLeft = EliminateSubQueries(this)
     val cleanRight = EliminateSubQueries(plan)
 
