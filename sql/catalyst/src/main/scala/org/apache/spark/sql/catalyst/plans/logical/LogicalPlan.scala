@@ -23,6 +23,9 @@ import org.apache.spark.sql.catalyst.analysis._
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.plans.QueryPlan
 import org.apache.spark.sql.catalyst.trees.{CurrentOrigin, TreeNode}
+import org.apache.spark.sql.catalyst.util.DateTimeUtils
+import org.apache.spark.sql.types._
+import org.apache.spark.unsafe.types.{CalendarInterval, UTF8String}
 
 
 abstract class LogicalPlan extends QueryPlan[LogicalPlan] with PredicateHelper with Logging {
@@ -158,7 +161,7 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with PredicateHelper w
       // debug output
       println(s"compare [${cleanRight.cleanArgs.mkString(", ")}] with [${cleanLeft.cleanArgs.mkString(", ")}]")
       if (cleanRight.cleanArgs == cleanLeft.cleanArgs) {
-        true
+        (cleanLeft.children, cleanRight.children).zipped.forall(_ sameResult _)
       } else {
         // check if cleanLeft has stricter filter than cleanRight
         (cleanLeft, cleanRight) match {
@@ -179,14 +182,28 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with PredicateHelper w
         // we assume the attribute reference is on the left
         case (LessThan(a1: AttributeReference, Cast(Literal(v1, t1), _)), LessThan(a2: AttributeReference, Cast(Literal(v2, t2), _))) =>
           // FIXME: v1 and v2 may not be comparable
-          a1.qualifiers == a2.qualifiers && t1 == t2 && v1 <= v2
+          a1.qualifiers == a2.qualifiers && t1 == t2 && {
+            (v1, v2) match {
+              case (a: Int, b: Int) => a <= b
+              case (a: Long, b: Long) => a <= b
+              case (a: Double, b: Double) => a <= b
+              case (a: Float, b: Float) => a <= b
+              case (a: Byte, b: Byte) => a <= b
+              case (a: Short, b: Short) => a <= b
+              case (a: String, b: String) => a <= b
+              case (a: Boolean, b: Boolean) => a <= b
+              case (a: BigDecimal, b: BigDecimal) => a <= b
+              case (a: Decimal, b: Decimal) => a <= b
+            }
+          }
         //case (LessThan(AttributeReference(_, _, _, _)(_, q), l1), LessThan(AttributeReference(_, _, _, _)(_, c), l2)) => true
+        case _ => false
       }
     }
   }
 
   /**
-   * Returns true and a filter node when the given logical plan will return the same results as
+   * Returns a filter node when the given logical plan will return the same results as
    * this logical plan by applying this filter.
    *
    * Since its likely undecidable to generally determine if two given plans will produce the same
@@ -203,14 +220,25 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with PredicateHelper w
     val cleanLeft = EliminateSubQueries(this)
     val cleanRight = EliminateSubQueries(plan)
 
-    cleanLeft.getClass == cleanRight.getClass &&
-      cleanLeft.children.size == cleanRight.children.size && {
-      logDebug(
-        s"[${cleanRight.cleanArgs.mkString(", ")}] == [${cleanLeft.cleanArgs.mkString(", ")}]")
-      println(s"compare [${cleanRight.cleanArgs.mkString(", ")}] with [${cleanLeft.cleanArgs.mkString(", ")}]")
-      cleanRight.cleanArgs == cleanLeft.cleanArgs
-    } &&
-      (cleanLeft.children, cleanRight.children).zipped.forall(_ sameResult _)
+    // debug output
+    println(s"findFilterToMakeSameResult compares [${cleanRight.cleanArgs.mkString(", ")}] with [${cleanLeft.cleanArgs.mkString(", ")}]")
+    if (cleanRight.cleanArgs == cleanLeft.cleanArgs) {
+      val childPairs = (cleanLeft.children, cleanRight.children).zipped
+      val options = childPairs.map((leftChild, rightChild) => leftChild findFilterToMakeSameResult rightChild)
+      options find {
+        case Some(_) => true
+        case None => false
+      } match {
+        case Some(s: Option[Filter]) => s
+        case None => None
+      }
+    } else {
+      // check if cleanLeft has stricter filter than cleanRight
+      cleanRight match {
+        case f: Filter => Some(f)
+        case _ => None
+      }
+    }
   }
 
   /** Args that have cleaned such that differences in expression id should not affect equality */

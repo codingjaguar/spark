@@ -20,7 +20,7 @@ package org.apache.spark.sql.execution
 import java.util.concurrent.locks.ReentrantReadWriteLock
 
 import org.apache.spark.Logging
-import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
+import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, Filter}
 import org.apache.spark.sql.columnar.InMemoryRelation
 import org.apache.spark.sql.{DataFrame, SQLContext}
 import org.apache.spark.storage.StorageLevel
@@ -146,7 +146,10 @@ private[sql] class CacheManager(sqlContext: SQLContext) extends Logging {
     * Returns a similar cached table and a predicate. By applying the predicate on cached table,
     * we get logically the same result as plan. */
   private[sql] def lookupSimilarCachedData(plan: LogicalPlan): (Option[CachedData], Option[Filter]) = readLock {
-    cachedData.find(cd => plan.sameResultIfApplyingFilter(cd.plan))
+    cachedData.find(cd => plan.sameResultIfApplyingFilter(cd.plan)) match {
+      case cd: Some => (cd, plan.findFilterToMakeSameResult(cd.plan))
+      case None => (None, None)
+    }
   }
 
   /** Replaces segments of the given logical plan with cached versions where possible. */
@@ -167,7 +170,7 @@ private[sql] class CacheManager(sqlContext: SQLContext) extends Logging {
       case cd: Some => cd.map(_.cachedRepresentation.withOutput(subPlan.output)).getOrElse(subPlan)
       case None => {
         lookupSimilarCachedData(subPlan) match {
-          case (Some(cd), Some(f)) => applyFilterOnCachedData(cd, f)
+          case (Some(cd), Some(f)) => applyFilterOnCachedData(subPlan, cd, f)
           case _ => subPlan
         }
       }
@@ -179,12 +182,9 @@ private[sql] class CacheManager(sqlContext: SQLContext) extends Logging {
   //  add filter
   // transform
   private[sql] def applyFilterOnCachedData(subPlan: LogicalPlan, cd: CachedData, f: Filter): LogicalPlan = {
-    f.child = cd.cachedRepresentation.withOutput(subPlan.output)).getOrElse(subPlan)
+    f.child = cd.cachedRepresentation.withOutput(subPlan.output);
+    f
   }
-
-
-
-
 
   /**
    * Invalidates the cache of any data that contains `plan`. Note that it is possible that this
