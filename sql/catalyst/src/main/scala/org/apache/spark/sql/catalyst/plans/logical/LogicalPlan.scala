@@ -159,7 +159,7 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with PredicateHelper w
       logDebug(
         s"[${cleanRight.cleanArgs.mkString(", ")}] == [${cleanLeft.cleanArgs.mkString(", ")}]")
       // debug output
-      println(s"compare [${cleanRight.cleanArgs.mkString(", ")}] with [${cleanLeft.cleanArgs.mkString(", ")}]")
+      println(s"sameResultIfApplyingFilter compare [${cleanRight.cleanArgs.mkString(", ")}] with [${cleanLeft.cleanArgs.mkString(", ")}]")
       if (cleanRight.cleanArgs == cleanLeft.cleanArgs) {
         (cleanLeft.children, cleanRight.children).zipped.forall(_ sameResult _)
       } else {
@@ -181,8 +181,9 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with PredicateHelper w
       (leftPredicates, rightPredicates).zipped forall {
         // we assume the attribute reference is on the left
         case (LessThan(a1: AttributeReference, Cast(Literal(v1, t1), _)), LessThan(a2: AttributeReference, Cast(Literal(v2, t2), _))) =>
-          // FIXME: v1 and v2 may not be comparable
           a1.qualifiers == a2.qualifiers && t1 == t2 && {
+            // debug output
+            println(s"isStricter: [${left.toString}] with [${right.toString}]")
             (v1, v2) match {
               case (a: Int, b: Int) => a <= b
               case (a: Long, b: Long) => a <= b
@@ -193,6 +194,7 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with PredicateHelper w
               case (a: String, b: String) => a <= b
               case (a: Boolean, b: Boolean) => a <= b
               case (a: BigDecimal, b: BigDecimal) => a <= b
+              case (a: BigInt, b: BigInt) => a <= b
               case (a: Decimal, b: Decimal) => a <= b
             }
           }

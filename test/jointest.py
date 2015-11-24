@@ -34,7 +34,7 @@ schemaTable2 = sqlContext.createDataFrame(table2)
 schemaTable2.registerTempTable("table2")
 
 # run the sql
-data = sqlContext.sql("SELECT table1.first_name from table1 JOIN table2 on table1.cityId = table2.cityId where table1.id < 2000 AND table1.cityId < 20")
+data = sqlContext.sql("SELECT * from table1 JOIN table2 on table1.cityId = table2.cityId where table1.id < 2000")
 
 # cache the result
 data.cache()
@@ -44,7 +44,7 @@ for theName in name.collect():
     print(theName)
 
 
-data2 = sqlContext.sql("SELECT table1.first_name from table1 JOIN table2 on table1.cityId = table2.cityId where table1.id < 2000")
+data2 = sqlContext.sql("SELECT * from table1 JOIN table2 on table1.cityId = table2.cityId where table1.id < 2000")
 data2.collect()
-data3 = sqlContext.sql("SELECT table1.first_name from table1 JOIN table2 on table1.cityId = table2.cityId where table1.id < 1000")
+data3 = sqlContext.sql("SELECT * from table1 JOIN table2 on table1.cityId = table2.cityId where table1.id < 1000")
 data3.collect()

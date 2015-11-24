@@ -20,7 +20,7 @@ package org.apache.spark.sql.execution
 import java.util.concurrent.locks.ReentrantReadWriteLock
 
 import org.apache.spark.Logging
-import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, Filter}
+import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.columnar.InMemoryRelation
 import org.apache.spark.sql.{DataFrame, SQLContext}
 import org.apache.spark.storage.StorageLevel
@@ -145,9 +145,10 @@ private[sql] class CacheManager(sqlContext: SQLContext) extends Logging {
     * are the same, but we allow the cached table to have different predicates than plan).
     * Returns a similar cached table and a predicate. By applying the predicate on cached table,
     * we get logically the same result as plan. */
-  private[sql] def lookupSimilarCachedData(plan: LogicalPlan): (Option[CachedData], Option[Filter]) = readLock {
+  private[sql] def lookupSimilarCachedData(plan: LogicalPlan): (Option[CachedData],
+    Option[org.apache.spark.sql.catalyst.plans.logical.Filter]) = readLock {
     cachedData.find(cd => plan.sameResultIfApplyingFilter(cd.plan)) match {
-      case cd: Some => (cd, plan.findFilterToMakeSameResult(cd.plan))
+      case Some(cd) => (Some(cd), plan.findFilterToMakeSameResult(cd.plan))
       case None => (None, None)
     }
   }
@@ -167,7 +168,7 @@ private[sql] class CacheManager(sqlContext: SQLContext) extends Logging {
 
   private[sql] def getCachedData(subPlan: LogicalPlan): LogicalPlan = {
     lookupCachedData(subPlan) match {
-      case cd: Some => cd.map(_.cachedRepresentation.withOutput(subPlan.output)).getOrElse(subPlan)
+      case Some(cd) => cd.cachedRepresentation.withOutput(subPlan.output)
       case None => {
         lookupSimilarCachedData(subPlan) match {
           case (Some(cd), Some(f)) => applyFilterOnCachedData(subPlan, cd, f)
@@ -181,9 +182,12 @@ private[sql] class CacheManager(sqlContext: SQLContext) extends Logging {
   //.getOrElse(subPlan)        //  find filter
   //  add filter
   // transform
-  private[sql] def applyFilterOnCachedData(subPlan: LogicalPlan, cd: CachedData, f: Filter): LogicalPlan = {
-    f.child = cd.cachedRepresentation.withOutput(subPlan.output);
-    f
+  private[sql] def applyFilterOnCachedData(subPlan: LogicalPlan, cd: CachedData,
+                                           f: org.apache.spark.sql.catalyst.plans.logical.Filter): LogicalPlan = {
+    println(s"applyFilterOnCachedData: [${subPlan.argString}}] with filter [${f.condition.toString}]")
+    val newFilter = org.apache.spark.sql.catalyst.plans.logical.Filter(f.condition,
+      cd.cachedRepresentation.withOutput(subPlan.output))
+    newFilter
   }
 
   /**

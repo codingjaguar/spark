@@ -17,7 +17,7 @@ schemaPeople = sqlContext.createDataFrame(people)
 schemaPeople.registerTempTable("people")
 
 # SQL can be run over DataFrames that have been registered as a table.
-teenagers1 = sqlContext.sql("SELECT name FROM people WHERE age >= 1 AND age <= 100")
+teenagers1 = sqlContext.sql("SELECT * FROM people WHERE age < 100")
 teenagers1.collect()
 teenagers1.cache()
 teenagers1.collect()
@@ -28,6 +28,6 @@ parts1 = lines1.map(lambda l: l.split(","))
 people1 = parts1.map(lambda p: Row(name=p[0], age=int(p[1])))
 schemaPeople1 = sqlContext.createDataFrame(people1)
 schemaPeople1.registerTempTable("people1")
-teenagers2 = sqlContext.sql("SELECT name FROM people1 WHERE age < 1")
+teenagers2 = sqlContext.sql("SELECT * FROM people1 WHERE age < 99")
 # The results of SQL queries are RDDs and support all the normal RDD operations.
 teenagers2.collect()
