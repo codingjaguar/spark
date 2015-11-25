@@ -147,6 +147,7 @@ private[sql] class CacheManager(sqlContext: SQLContext) extends Logging {
     * we get logically the same result as plan. */
   private[sql] def lookupSimilarCachedData(plan: LogicalPlan): (Option[CachedData],
     Option[org.apache.spark.sql.catalyst.plans.logical.Filter]) = readLock {
+    println(s"LookupSimilar")
     cachedData.find(cd => plan.sameResultIfApplyingFilter(cd.plan)) match {
       case Some(cd) => (Some(cd), plan.findFilterToMakeSameResult(cd.plan))
       case None => (None, None)
@@ -156,10 +157,7 @@ private[sql] class CacheManager(sqlContext: SQLContext) extends Logging {
   /** Replaces segments of the given logical plan with cached versions where possible. */
   private[sql] def useCachedData(plan: LogicalPlan): LogicalPlan = {
     plan transformDown {
-      case currentFragment =>
-        lookupCachedData(currentFragment)
-          .map(_.cachedRepresentation.withOutput(currentFragment.output))
-          .getOrElse(currentFragment)
+      case currentFragment => getCachedData(currentFragment)
     }
     // use (cached, filter) <- lookupSimilarCachedData
     // apply filter on cached
@@ -167,6 +165,7 @@ private[sql] class CacheManager(sqlContext: SQLContext) extends Logging {
 
 
   private[sql] def getCachedData(subPlan: LogicalPlan): LogicalPlan = {
+    println(s"getCachedData")
     lookupCachedData(subPlan) match {
       case Some(cd) => cd.cachedRepresentation.withOutput(subPlan.output)
       case None => {
