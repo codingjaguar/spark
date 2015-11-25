@@ -183,28 +183,68 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with PredicateHelper w
     leftPredicates.size == rightPredicates.size && {
       (leftPredicates, rightPredicates).zipped forall {
         // we assume the attribute reference is on the left
-        case (LessThan(a1: AttributeReference, Cast(Literal(v1, t1), _)), LessThan(a2: AttributeReference, Cast(Literal(v2, t2), _))) =>
+        case (LessThan(a1: AttributeReference, Cast(Literal(v1, t1), _)), LessThan(a2: AttributeReference, Cast(Literal(v2, t2), _)))  =>
           logDebug(s"case LessThan")
           a1.qualifiers == a2.qualifiers && t1 == t2 && {
-            // debug output
-            (v1, v2) match {
-              case (a: Int, b: Int) => a <= b
-              case (a: Long, b: Long) => a <= b
-              case (a: Double, b: Double) => a <= b
-              case (a: Float, b: Float) => a <= b
-              case (a: Byte, b: Byte) => a <= b
-              case (a: Short, b: Short) => a <= b
-              case (a: String, b: String) => a <= b
-              case (a: Boolean, b: Boolean) => a <= b
-              case (a: BigDecimal, b: BigDecimal) => a <= b
-              case (a: BigInt, b: BigInt) => a <= b
-              case (a: Decimal, b: Decimal) => a <= b
-            }
+            cascadeDown(v1, v2)
+          }
+        case (LessThanOrEqual(a1: AttributeReference, Cast(Literal(v1, t1), _)), LessThanOrEqual(a2: AttributeReference, Cast(Literal(v2, t2), _)))  =>
+          logDebug(s"case LessThan")
+          a1.qualifiers == a2.qualifiers && t1 == t2 && {
+            cascadeDown(v1, v2)
+          }
+        case (LessThan(a1: AttributeReference, Cast(Literal(v1, t1), _)), LessThanOrEqual(a2: AttributeReference, Cast(Literal(v2, t2), _)))  =>
+          logDebug(s"case LessThan")
+          a1.qualifiers == a2.qualifiers && t1 == t2 && {
+            cascadeDown(v1, v2)
+          }
+        case (GreaterThan(a1: AttributeReference, Cast(Literal(v1, t1), _)), GreaterThan(a2: AttributeReference, Cast(Literal(v2, t2), _))) =>
+          logDebug(s"case GreaterThan")
+          a1.qualifiers == a2.qualifiers && t1 == t2 && {
+          cascadeUp(v1, v2)
+          }
+        case (GreaterThanOrEqual(a1: AttributeReference, Cast(Literal(v1, t1), _)), GreaterThanOrEqual(a2: AttributeReference, Cast(Literal(v2, t2), _))) =>
+          logDebug(s"case GreaterThan")
+          a1.qualifiers == a2.qualifiers && t1 == t2 && {
+            cascadeUp(v1, v2)
+          }
+        case (GreaterThan(a1: AttributeReference, Cast(Literal(v1, t1), _)), GreaterThanOrEqual(a2: AttributeReference, Cast(Literal(v2, t2), _))) =>
+          logDebug(s"case GreaterThan")
+          a1.qualifiers == a2.qualifiers && t1 == t2 && {
+            cascadeUp(v1, v2)
           }
         //case (LessThan(AttributeReference(_, _, _, _)(_, q), l1), LessThan(AttributeReference(_, _, _, _)(_, c), l2)) => true
         case _ => false
       }
     }
+  }
+
+  def cascadeDown(v1: Any, v2: Any) : Boolean = (v1, v2) match {
+    case (a: Int, b: Int) => a <= b
+    case (a: Long, b: Long) => a <= b
+    case (a: Double, b: Double) => a <= b
+    case (a: Float, b: Float) => a <= b
+    case (a: Byte, b: Byte) => a <= b
+    case (a: Short, b: Short) => a <= b
+    case (a: String, b: String) => a <= b
+    case (a: Boolean, b: Boolean) => a <= b
+    case (a: BigDecimal, b: BigDecimal) => a <= b
+    case (a: BigInt, b: BigInt) => a <= b
+    case (a: Decimal, b: Decimal) => a <= b
+  }
+
+  def cascadeUp(v1: Any, v2: Any) : Boolean = (v1, v2) match {
+    case (a: Int, b: Int) => a >= b
+    case (a: Long, b: Long) => a >= b
+    case (a: Double, b: Double) => a >= b
+    case (a: Float, b: Float) => a >= b
+    case (a: Byte, b: Byte) => a >= b
+    case (a: Short, b: Short) => a >= b
+    case (a: String, b: String) => a >= b
+    case (a: Boolean, b: Boolean) => a >= b
+    case (a: BigDecimal, b: BigDecimal) => a >= b
+    case (a: BigInt, b: BigInt) => a >= b
+    case (a: Decimal, b: Decimal) => a >= b
   }
 
   /**
@@ -247,7 +287,7 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with PredicateHelper w
     } else {
       logDebug(s"left args != right args")
       // check if cleanLeft has stricter filter than cleanRight
-      cleanRight match {
+      cleanLeft match {
         case f: Filter => Some(f)
         case _ => None
       }
