@@ -151,6 +151,7 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with PredicateHelper w
    * can do better should override this function.
    */
   def sameResultIfApplyingFilter(plan: LogicalPlan): Boolean = {
+    logDebug(s"sameResultIfApplyingFilter")
     val cleanLeft = EliminateSubQueries(this)
     val cleanRight = EliminateSubQueries(plan)
 
@@ -159,10 +160,12 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with PredicateHelper w
       logDebug(
         s"[${cleanRight.cleanArgs.mkString(", ")}] == [${cleanLeft.cleanArgs.mkString(", ")}]")
       // debug output
-      println(s"sameResultIfApplyingFilter compare [${cleanRight.cleanArgs.mkString(", ")}] with [${cleanLeft.cleanArgs.mkString(", ")}]")
+      logDebug(s"sameResultIfApplyingFilter compare [${cleanRight.cleanArgs.mkString(", ")}] with [${cleanLeft.cleanArgs.mkString(", ")}]")
       if (cleanRight.cleanArgs == cleanLeft.cleanArgs) {
-        (cleanLeft.children, cleanRight.children).zipped.forall(_ sameResult _)
+        logDebug(s"left args == right args, call recursion")
+        (cleanLeft.children, cleanRight.children).zipped.forall(_ sameResultIfApplyingFilter _)
       } else {
+        logDebug(s"not exactly same")
         // check if cleanLeft has stricter filter than cleanRight
         (cleanLeft, cleanRight) match {
           case (Filter(cond1, _), Filter(cond2, _)) => isStricter(cond1, cond2) &&
@@ -174,16 +177,16 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with PredicateHelper w
   }
 
   def isStricter(left: Expression, right: Expression): Boolean = {
+    logDebug(s"isStricter: [${left.toString}] with [${right.toString}]")
     val leftPredicates = splitConjunctivePredicates(left)
     val rightPredicates = splitConjunctivePredicates(right)
-
     leftPredicates.size == rightPredicates.size && {
       (leftPredicates, rightPredicates).zipped forall {
         // we assume the attribute reference is on the left
         case (LessThan(a1: AttributeReference, Cast(Literal(v1, t1), _)), LessThan(a2: AttributeReference, Cast(Literal(v2, t2), _))) =>
+          logDebug(s"case LessThan")
           a1.qualifiers == a2.qualifiers && t1 == t2 && {
             // debug output
-            println(s"isStricter: [${left.toString}] with [${right.toString}]")
             (v1, v2) match {
               case (a: Int, b: Int) => a <= b
               case (a: Long, b: Long) => a <= b
@@ -223,18 +226,26 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with PredicateHelper w
     val cleanRight = EliminateSubQueries(plan)
 
     // debug output
-    println(s"findFilterToMakeSameResult compares [${cleanRight.cleanArgs.mkString(", ")}] with [${cleanLeft.cleanArgs.mkString(", ")}]")
+    logDebug(s"findFilterToMakeSameResult compares [${cleanRight.cleanArgs.mkString(", ")}] with [${cleanLeft.cleanArgs.mkString(", ")}]")
     if (cleanRight.cleanArgs == cleanLeft.cleanArgs) {
+      logDebug(s"left args == right args")
       val childPairs = (cleanLeft.children, cleanRight.children).zipped
       val options = childPairs.map((leftChild, rightChild) => leftChild findFilterToMakeSameResult rightChild)
       options find {
         case Some(_) => true
         case None => false
       } match {
-        case Some(s: Option[Filter]) => s
-        case None => None
+        case Some(s: Option[Filter]) => {
+          logDebug(s"Filter Found")
+          s
+        }
+        case None => {
+          logDebug(s"Filter not Found")
+          None
+        }
       }
     } else {
+      logDebug(s"left args != right args")
       // check if cleanLeft has stricter filter than cleanRight
       cleanRight match {
         case f: Filter => Some(f)

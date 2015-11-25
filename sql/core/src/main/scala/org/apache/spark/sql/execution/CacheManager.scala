@@ -147,10 +147,13 @@ private[sql] class CacheManager(sqlContext: SQLContext) extends Logging {
     * we get logically the same result as plan. */
   private[sql] def lookupSimilarCachedData(plan: LogicalPlan): (Option[CachedData],
     Option[org.apache.spark.sql.catalyst.plans.logical.Filter]) = readLock {
-    println(s"LookupSimilar")
+    logDebug(s"LookupSimilar")
     cachedData.find(cd => plan.sameResultIfApplyingFilter(cd.plan)) match {
       case Some(cd) => (Some(cd), plan.findFilterToMakeSameResult(cd.plan))
-      case None => (None, None)
+      case None => {
+        logDebug(s"not matching any cache")
+        (None, None)
+      }
     }
   }
 
@@ -165,7 +168,7 @@ private[sql] class CacheManager(sqlContext: SQLContext) extends Logging {
 
 
   private[sql] def getCachedData(subPlan: LogicalPlan): LogicalPlan = {
-    println(s"getCachedData")
+    logDebug(s"getCachedData")
     lookupCachedData(subPlan) match {
       case Some(cd) => cd.cachedRepresentation.withOutput(subPlan.output)
       case None => {
@@ -183,7 +186,7 @@ private[sql] class CacheManager(sqlContext: SQLContext) extends Logging {
   // transform
   private[sql] def applyFilterOnCachedData(subPlan: LogicalPlan, cd: CachedData,
                                            f: org.apache.spark.sql.catalyst.plans.logical.Filter): LogicalPlan = {
-    println(s"applyFilterOnCachedData: [${subPlan.argString}}] with filter [${f.condition.toString}]")
+    logDebug(s"applyFilterOnCachedData: [${subPlan.argString}}] with filter [${f.condition.toString}]")
     val newFilter = org.apache.spark.sql.catalyst.plans.logical.Filter(f.condition,
       cd.cachedRepresentation.withOutput(subPlan.output))
     newFilter
