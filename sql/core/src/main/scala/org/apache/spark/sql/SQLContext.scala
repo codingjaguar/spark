@@ -194,7 +194,14 @@ class SQLContext(@transient val sparkContext: SparkContext)
 
   protected[sql] def parseSql(sql: String): LogicalPlan = ddlParser.parse(sql, false)
 
-  protected[sql] def executeSql(sql: String): this.QueryExecution = executePlan(parseSql(sql))
+  protected[sql] def executeSql(sql: String): this.QueryExecution = {
+    val queryExecution = executePlan(parseSql(sql))
+    if (enableAutoCache) {
+      // automatically cache analyzed
+      cacheManager.autoCachePlan(queryExecution.analyzed, queryExecution.executedPlan)
+    }
+    queryExecution
+  }
 
   protected[sql] def executePlan(plan: LogicalPlan) = new this.QueryExecution(plan)
 
@@ -238,6 +245,9 @@ class SQLContext(@transient val sparkContext: SparkContext)
 
   @transient
   protected[sql] val cacheManager = new CacheManager(this)
+
+  @transient
+  protected[sql] val enableAutoCache = true
 
   /**
    * :: Experimental ::
@@ -913,6 +923,7 @@ class SQLContext(@transient val sparkContext: SparkContext)
   protected[sql] class QueryExecution(val logical: LogicalPlan) {
     def assertAnalyzed(): Unit = analyzer.checkAnalysis(analyzed)
 
+
     lazy val analyzed: LogicalPlan = analyzer.execute(logical)
     lazy val withCachedData: LogicalPlan = {
       assertAnalyzed()
@@ -923,8 +934,8 @@ class SQLContext(@transient val sparkContext: SparkContext)
       println(analyzed.treeString)
 
       cacheManager.useCachedData(analyzed)
-
     }
+
     lazy val optimizedPlan: LogicalPlan = optimizer.execute(withCachedData)
 
     // TODO: Don't just pick the first one...

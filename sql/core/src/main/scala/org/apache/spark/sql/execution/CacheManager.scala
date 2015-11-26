@@ -88,6 +88,29 @@ private[sql] class CacheManager(sqlContext: SQLContext) extends Logging {
    * `RDD.cache()`, the default storage level is set to be `MEMORY_AND_DISK` because recomputing
    * the in-memory columnar representation of the underlying table is expensive.
    */
+  private[sql] def autoCachePlan( planToCache: LogicalPlan,
+                                  executedPlan: SparkPlan,
+                                  storageLevel: StorageLevel = MEMORY_AND_DISK): Unit = writeLock {
+    if (lookupCachedData(planToCache).nonEmpty) {
+      logWarning("Asked to cache already cached data.")
+    } else {
+      cachedData +=
+        CachedData(
+          planToCache,
+          InMemoryRelation(
+            sqlContext.conf.useCompression,
+            sqlContext.conf.columnBatchSize,
+            storageLevel,
+            executedPlan,
+            None))
+    }
+  }
+
+  /**
+   * Caches the data produced by the logical representation of the given [[DataFrame]]. Unlike
+   * `RDD.cache()`, the default storage level is set to be `MEMORY_AND_DISK` because recomputing
+   * the in-memory columnar representation of the underlying table is expensive.
+   */
   private[sql] def cacheQuery(
       query: DataFrame,
       tableName: Option[String] = None,
@@ -162,8 +185,6 @@ private[sql] class CacheManager(sqlContext: SQLContext) extends Logging {
     plan transformDown {
       case currentFragment => getCachedData(currentFragment)
     }
-    // use (cached, filter) <- lookupSimilarCachedData
-    // apply filter on cached
   }
 
 
