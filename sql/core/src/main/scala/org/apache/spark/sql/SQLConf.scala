@@ -192,6 +192,11 @@ private[spark] object SQLConf {
       "column based on statistics of the data.",
     isPublic = false)
 
+  val USE_AUTO_CACHE = booleanConf("spark.sql.sqlContext.enableAutoCache",
+    defaultValue = Some(true),
+    doc = "When set to true Spark SQL will automatically cache every query",
+    isPublic = true)
+
   val COLUMN_BATCH_SIZE = intConf("spark.sql.inMemoryColumnarStorage.batchSize",
     defaultValue = Some(10000),
     doc = "Controls the size of batches for columnar caching.  Larger batch sizes can improve " +
@@ -459,6 +464,8 @@ private[sql] class SQLConf extends Serializable with CatalystConf {
   private[spark] def dialect: String = getConf(DIALECT)
 
   private[spark] def useCompression: Boolean = getConf(COMPRESS_CACHED)
+
+  private[spark] def useAutoCache: Boolean = getConf(USE_AUTO_CACHE)
 
   private[spark] def parquetCompressionCodec: String = getConf(PARQUET_COMPRESSION)
 

@@ -91,6 +91,8 @@ private[sql] class CacheManager(sqlContext: SQLContext) extends Logging {
   private[sql] def autoCachePlan( planToCache: LogicalPlan,
                                   executedPlan: SparkPlan,
                                   storageLevel: StorageLevel = MEMORY_AND_DISK): Unit = writeLock {
+    logDebug(s"autoCachePlan: \nplan to cache:\n[${planToCache.toString}]")
+    logDebug(s"executed plan:\n[${executedPlan.toString}]")
     if (lookupCachedData(planToCache).nonEmpty) {
       logWarning("Asked to cache already cached data.")
     } else {

@@ -194,16 +194,18 @@ class SQLContext(@transient val sparkContext: SparkContext)
 
   protected[sql] def parseSql(sql: String): LogicalPlan = ddlParser.parse(sql, false)
 
-  protected[sql] def executeSql(sql: String): this.QueryExecution = {
-    val queryExecution = executePlan(parseSql(sql))
-    if (enableAutoCache) {
-      // automatically cache analyzed
-      cacheManager.autoCachePlan(queryExecution.analyzed, queryExecution.executedPlan)
-    }
-    queryExecution
-  }
+  protected[sql] def executeSql(sql: String): this.QueryExecution = executePlan(parseSql(sql))
 
-  protected[sql] def executePlan(plan: LogicalPlan) = new this.QueryExecution(plan)
+  protected[sql] def executePlan(plan: LogicalPlan): this.QueryExecution = {
+    logDebug(s"executePlan [${plan.toString}")
+    val qe = new this.QueryExecution(plan)
+    if (conf.useAutoCache) {
+      logDebug(s"enableAutoCache")
+      // automatically cache analyzed
+      cacheManager.autoCachePlan(qe.analyzed, qe.executedPlan)
+    }
+    qe
+  }
 
   @transient
   protected[sql] val tlSession = new ThreadLocal[SQLSession]() {
@@ -245,9 +247,6 @@ class SQLContext(@transient val sparkContext: SparkContext)
 
   @transient
   protected[sql] val cacheManager = new CacheManager(this)
-
-  @transient
-  protected[sql] val enableAutoCache = true
 
   /**
    * :: Experimental ::

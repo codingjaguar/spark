@@ -14,6 +14,9 @@ table2Loc = dataDir + "/" + table2Name
 conf = SparkConf().setAppName("JoinTest")
 sc = SparkContext(conf = conf)
 sqlContext = SQLContext(sc)
+#sqlContext.turnOnAutoCache()
+sqlContext.sql("SET spark.sql.sqlContext.enableAutoCache=false")
+#print sqlContext.getConf("spark.sql.parquet.binaryAsString", "false")
 
 # register the firstTable
 # load a text file and convret each line to a row
@@ -30,6 +33,7 @@ schemaTable1.registerTempTable("table1")
 lines2 = sc.textFile(table2Loc)
 parts2 = lines.map(lambda l : l.split(","))
 table2 = parts2.map(lambda p : Row(cityId = int(p[0]), city = p[1]))
+
 schemaTable2 = sqlContext.createDataFrame(table2)
 schemaTable2.registerTempTable("table2")
 
@@ -37,7 +41,7 @@ schemaTable2.registerTempTable("table2")
 data = sqlContext.sql("SELECT * from table1 JOIN table2 on table1.cityId = table2.cityId where table1.id < 2000")
 
 # cache the result
-data.cache()
+#data.cache()
 # print the result
 name = data.map(lambda p: "FName: " + p.first_name)
 for theName in name.collect():
