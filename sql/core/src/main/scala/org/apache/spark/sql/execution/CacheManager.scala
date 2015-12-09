@@ -134,13 +134,46 @@ private[sql] class CacheManager extends Logging {
     cachedData.find(cd => plan.sameResult(cd.plan))
   }
 
+  private[sql] def lookupSimilarCacheData(plan: LogicalPlan): (
+    Option[CachedData],
+    Option[org.apache.spark.sql.catalyst.plans.logical.Filter]) = readLock {
+    logDebug(s"LookupSimilar")
+    cachedData.find(cd => plan.sameResultIfApplyingFilter(cd.plan)) match {
+      case Some(cd) => (Some(cd), plan.findFilterToMakeSameResult(cd.plan))
+      case None => {
+        logDebug(s"Not match any cache")
+        (None, None)
+      }
+    }
+  }
+
+  private[sql] def applyFilterOnCachedData(subPlan: LogicalPlan, cd: CachedData,
+                                           f: org.apache.spark.sql.catalyst.plans.logical.Filter) :
+  LogicalPlan = {
+    logDebug(s"applyFilterOnCachedData: [${subPlan.argString}}] with filter [${f.condition.toString}]")
+    org.apache.spark.sql.catalyst.plans.logical.Filter(f.condition,
+      cd.cachedRepresentation.withOutput(subPlan.output))
+  }
+
+
+
+
+
   /** Replaces segments of the given logical plan with cached versions where possible. */
   private[sql] def useCachedData(plan: LogicalPlan): LogicalPlan = {
     plan transformDown {
-      case currentFragment =>
-        lookupCachedData(currentFragment)
-          .map(_.cachedRepresentation.withOutput(currentFragment.output))
-          .getOrElse(currentFragment)
+      case currentFragment => lookupCachedData(currentFragment) match {
+        case Some(cd) => cd.cachedRepresentation.withOutput(currentFragment.output)
+        case None => {
+          lookupSimilarCacheData(currentFragment) match {
+            case (Some(cd), Some(f)) =>
+              org.apache.spark.sql.catalyst.plans.logical.Filter(
+                f.condition,
+                cd.cachedRepresentation.withOutput(currentFragment.output))
+            case _ => currentFragment
+          }
+        }
+      }
     }
   }
 

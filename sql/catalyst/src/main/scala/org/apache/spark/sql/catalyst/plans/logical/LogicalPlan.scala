@@ -23,6 +23,7 @@ import org.apache.spark.sql.catalyst.analysis._
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.plans.QueryPlan
 import org.apache.spark.sql.catalyst.trees.{CurrentOrigin, TreeNode}
+import org.apache.spark.sql.types._
 
 
 abstract class LogicalPlan extends QueryPlan[LogicalPlan] with PredicateHelper with Logging {
@@ -106,6 +107,18 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with PredicateHelper w
    */
   def childrenResolved: Boolean = children.forall(_.resolved)
 
+  def sameNode(left: LogicalPlan, right:LogicalPlan): Boolean = {
+    left.getClass == right.getClass &&
+      left.children.size == right.children.size && {
+      (left.cleanArgs == right.cleanArgs) || ((left, right) match {
+        case (l: Filter, r: Filter) =>
+          equivalentPredicates(cleanExpression(l.condition, l.children.flatMap(_.output)),
+            cleanExpression(r.condition, r.children.flatMap(_.output)))
+        case _ => false
+      })
+    }
+  }
+
   /**
    * Returns true when the given logical plan will return the same results as this logical plan.
    *
@@ -123,18 +136,113 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with PredicateHelper w
     val cleanLeft = EliminateSubQueries(this)
     val cleanRight = EliminateSubQueries(plan)
 
-    cleanLeft.getClass == cleanRight.getClass &&
-      cleanLeft.children.size == cleanRight.children.size && {
-      logDebug(
-        s"[${cleanRight.cleanArgs.mkString(", ")}] == [${cleanLeft.cleanArgs.mkString(", ")}]")
-      (cleanRight.cleanArgs == cleanLeft.cleanArgs) || ((cleanLeft, cleanRight) match {
-        case (l: Filter, r: Filter) =>
-          equivalentPredicates(cleanExpression(l.condition, l.children.flatMap(_.output)),
-            cleanExpression(r.condition, r.children.flatMap(_.output)))
-        case _ => false
-      })
-    } &&
+    sameNode(cleanLeft, cleanRight) &&
     (cleanLeft.children, cleanRight.children).zipped.forall(_ sameResult _)
+  }
+
+  /**
+   * Similar to SameResult, but would return true when the given logical plan will return the same
+   * results as this logical applying filter.
+   */
+  def sameResultIfApplyingFilter(plan: LogicalPlan): Boolean = {
+    val cleanLeft = EliminateSubQueries(this)
+    val cleanRight = EliminateSubQueries(plan)
+
+    if (sameNode(cleanLeft, cleanRight)) {
+      (cleanLeft.children, cleanRight.children).zipped.forall(_ sameResultIfApplyingFilter _)
+    } else {
+      (cleanLeft, cleanRight) match {
+        case (f1: Filter, f2: Filter) => (f1.cleanArgs, f2.cleanArgs).zipped.forall {
+          case (e1: Expression, e2: Expression) => isStricterPredicate(e1, e2)
+          case (a1, a2) => a1 == a2
+        }
+        case _ => false
+      }
+    }
+  }
+
+  /**
+   * Returns true if left predicate is stricter than right predicate. A predicate L is stricter
+   * than predicate R iff L's result is a subset of R's result.
+   */
+  def isStricterPredicate(left: Expression, right: Expression): Boolean = {
+    val leftAndPredicate = splitConjunctivePredicates(left)
+    val rightAndPredicate = splitConjunctivePredicates(right)
+    var rightAndSet = rightAndPredicate.toSet
+
+    // For conjunctive split predicate check whether e1 is stricter than e2
+    def isStricter(e1: Expression, e2: Expression) = {
+      (e1, e2) match {
+        // LessThan v.s. LessThan
+        case (LessThan(attr1: AttributeReference, Cast(Literal(v1, t1), _)),
+        LessThan(attr2: AttributeReference, Cast(Literal(v2, t2), _))) => {
+          logDebug(s"Case LessThan")
+          attr1 == attr2 && t1 == t2 && cascadeDown(v1, v2)
+        }
+        case _ => true
+      }
+    }
+
+    leftAndPredicate.forall((l: Expression) =>
+      rightAndPredicate.find((r: Expression) => isStricter(l, r)) match {
+        case Some(e) =>
+          rightAndSet -= e
+          true
+        case None => true
+      }
+    ) && rightAndSet.isEmpty
+  }
+
+
+  def cascadeDown(v1: Any, v2: Any) : Boolean = (v1, v2) match {
+    case (a: Int, b: Int) => a <= b
+    case (a: Long, b: Long) => a <= b
+    case (a: Double, b: Double) => a <= b
+    case (a: Float, b: Float) => a <= b
+    case (a: Byte, b: Byte) => a <= b
+    case (a: Short, b: Short) => a <= b
+    case (a: String, b: String) => a <= b
+    case (a: Boolean, b: Boolean) => a <= b
+    case (a: BigDecimal, b: BigDecimal) => a <= b
+    case (a: BigInt, b: BigInt) => a <= b
+    case (a: Decimal, b: Decimal) => a <= b
+  }
+
+  def cascadeUp(v1: Any, v2: Any) : Boolean = (v1, v2) match {
+    case (a: Int, b: Int) => a >= b
+    case (a: Long, b: Long) => a >= b
+    case (a: Double, b: Double) => a >= b
+    case (a: Float, b: Float) => a >= b
+    case (a: Byte, b: Byte) => a >= b
+    case (a: Short, b: Short) => a >= b
+    case (a: String, b: String) => a >= b
+    case (a: Boolean, b: Boolean) => a >= b
+    case (a: BigDecimal, b: BigDecimal) => a >= b
+    case (a: BigInt, b: BigInt) => a >= b
+    case (a: Decimal, b: Decimal) => a >= b
+  }
+
+  /**
+   * Returns a filter node when the given logical plan will return the same results as
+   * this logical plan by applying this filter.
+   */
+  def findFilterToMakeSameResult(plan: LogicalPlan): Option[Filter] = {
+    val cleanLeft = EliminateSubQueries(this)
+    val cleanRight = EliminateSubQueries(plan)
+
+    // debug output
+    logDebug(s"findFilterToMakeSameResult compares [${cleanRight.cleanArgs.mkString(", ")}] with [${cleanLeft.cleanArgs.mkString(", ")}]")
+    if (sameNode(cleanLeft, cleanRight)) {
+      logDebug(s"left match right")
+      (cleanLeft.children, cleanRight.children).zipped.flatMap((lc, rc) =>
+        lc findFilterToMakeSameResult rc).find((f: Filter) => true)
+    } else {
+      logDebug(s"left does !match right")
+      cleanLeft match {
+        case f: Filter => Some(f)
+        case _ => None
+      }
+    }
   }
 
   /** Clean an expression so that differences in expression id should not affect equality */
